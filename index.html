@@ -279,32 +279,172 @@ async function loadGitHubPhotos() {
     if (!response.ok) throw new Error(`GitHub gaf foutcode ${response.status}`);
 
     const files = await response.json();
-    const images = files
-      .filter(f => f.type === 'file' && /\.(jpe?g|png|webp|gif)$/i.test(f.name))
-      .sort((a,b) => b.name.localeCompare(a.name, undefined, {numeric:true, sensitivity:'base'}));
 
-    if (!images.length) {
-      status.textContent = 'Er staan nog geen foto’s in de map "fotos".';
-      return;
+let images = files.filter(f =>
+
+  f.type === 'file' &&
+
+  /\.(jpe?g|png|webp|gif)$/i.test(f.name)
+
+);
+
+if (!images.length) {
+
+  status.textContent = 'Er staan nog geen foto’s in de map "fotos".';
+
+  return;
+
+}
+
+let latestName = null;
+
+try {
+
+  const commitsResponse = await fetch(
+
+    `https://api.github.com/repos/${owner}/${repo}/commits?path=${folder}&per_page=5`
+
+  );
+
+  if (commitsResponse.ok) {
+
+    const commits = await commitsResponse.json();
+
+    for (const commit of commits) {
+
+      const detailResponse = await fetch(commit.url);
+
+      if (!detailResponse.ok) continue;
+
+      const detail = await detailResponse.json();
+
+      const changedImage = (detail.files || []).find(f =>
+
+        f.filename.startsWith(`${folder}/`) &&
+
+        /\.(jpe?g|png|webp|gif)$/i.test(f.filename) &&
+
+        f.status !== 'removed'
+
+      );
+
+      if (changedImage) {
+
+        latestName = changedImage.filename.split('/').pop();
+
+        break;
+
+      }
+
     }
 
-    status.remove();
+  }
 
-    images.forEach((file, i) => {
-      const btn = document.createElement('button');
-      btn.className = 'photo dynamic' + (i % 7 === 0 ? ' wide' : '');
-      btn.dataset.src = file.download_url;
-      btn.setAttribute('aria-label', 'Foto vergroten');
+} catch (e) {}
 
-      const img = document.createElement('img');
-      img.src = file.download_url;
-      img.alt = file.name.replace(/\.[^.]+$/, '').replace(/[-_]+/g, ' ');
-      img.loading = 'lazy';
+images.sort((a,b) =>
 
-      btn.appendChild(img);
-      gallery.appendChild(btn);
-    });
+  b.name.localeCompare(a.name, undefined, {
 
+    numeric:true,
+
+    sensitivity:'base'
+
+  })
+
+);
+
+if (latestName) {
+
+  const index = images.findIndex(f => f.name === latestName);
+
+  if (index > 0) {
+
+    const latest = images.splice(index, 1)[0];
+
+    images.unshift(latest);
+
+  }
+
+}
+
+status.remove();
+
+const latest = images[0];
+
+const latestSection = document.createElement('section');
+
+latestSection.className = 'section';
+
+latestSection.innerHTML = `
+
+  <div class="wrap">
+
+    <span class="kicker">LAATST TOEGEVOEGD</span>
+
+    <h2>Nieuwste foto</h2>
+
+    <button
+
+      class="photo"
+
+      data-src="${latest.download_url}"
+
+      type="button"
+
+      style="display:block;border:0;padding:0;margin:22px auto 0;
+
+             width:100%;max-width:850px;background:none;cursor:pointer;"
+
+      aria-label="Nieuwste foto vergroten">
+
+      <img
+
+        src="${latest.download_url}"
+
+        alt="${latest.name}"
+
+        style="display:block;width:100%;border-radius:16px;"
+
+      >
+
+    </button>
+
+  </div>
+
+`;
+
+gallery.closest('section').insertAdjacentElement(
+
+  'beforebegin',
+
+  latestSection
+
+);
+
+images.forEach((file, i) => {
+
+  const btn = document.createElement('button');
+
+  btn.className = 'photo dynamic-photo';
+
+  btn.dataset.src = file.download_url;
+
+  btn.setAttribute('aria-label', `Foto ${i + 1} vergroten`);
+
+  const img = document.createElement('img');
+
+  img.src = file.download_url;
+
+  img.alt = file.name.replace(/\.[^.]+$/, '').replace(/[-_]+/g, ' ');
+
+  img.loading = 'lazy';
+
+  btn.appendChild(img);
+
+  gallery.appendChild(btn);
+
+});
     bindLightbox();
   } catch (err) {
     status.classList.add('error');
